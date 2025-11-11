@@ -1,0 +1,5 @@
+/* index.css — tiny reset */
+:root { color-scheme: light dark; }
+html, body, #root { height: 100%; }
+html, body { margin: 0; padding: 0; background: #fff; color: #111; }
+*, *::before, *::after { box-sizing: border-box; }
