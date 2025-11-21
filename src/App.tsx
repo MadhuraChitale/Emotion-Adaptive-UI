@@ -1,135 +1,37 @@
-// import { useEffect, useRef, useState } from 'react';
-// import { applyAdaptation } from './adaptation';
-// import { loadModels, startCamera, loop } from './emotionEngine';
-// import type { HUD } from './emotionEngine';
-// import './index.css';
-
-// function DebugHUD({ hud }: { hud: HUD | null }) {
-//   if (!hud) return null;
-//   return (
-//     <div className="hud">
-//       <div><b>Emotion:</b> {hud.label}</div>
-//       <div><b>Conf:</b> {hud.conf.toFixed(2)} {hud.cooling > 0 ? `(cooldown ${Math.ceil(hud.cooling/1000)}s)` : ''}</div>
-//       <hr />
-//       <div className="scores">
-//         {Object.entries(hud.scores).map(([k,v]) => (
-//           <div key={k}>{k}: {(v as number).toFixed(2)}</div>
-//         ))}
-//       </div>
-//     </div>
-//   );
-// }
-
-// function TaskArea() {
-//   return (
-//     <div className="task">
-//       <h2 data-highlight>Configure Your Profile</h2>
-//       <div className="row">
-//         <label>Username</label>
-//         <input placeholder="Pick a unique name" />
-//       </div>
-//       <div className="row">
-//         <label>Email</label>
-//         <input placeholder="you@example.com" />
-//       </div>
-//       <div className="row">
-//         <label>Notifications</label>
-//         <select>
-//           <option>Important Only</option>
-//           <option>All</option>
-//           <option>None</option>
-//         </select>
-//       </div>
-//       <div className="inline-tip" data-show-inline-tip>
-//         Tip: Your username must be 6–12 chars, start with a letter.
-//       </div>
-//       <button className="primary">Save</button>
-//       <button className="hint" data-show-hint>Show Hint</button>
-//       <div className="guided" data-show-guided>
-//         <p>Guided step: Fill username, then email, then choose notifications.</p>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default function App() {
-//   const videoRef = useRef<HTMLVideoElement>(null);
-//   const [hud, setHud] = useState<HUD|null>(null);
-
-//   // useEffect(() => {
-//   //   (async () => {
-//   //     await loadModels('/models');         // loads 2 models only
-//   //     applyAdaptation('focused');          // default UI
-//   //     if (videoRef.current) {
-//   //       await startCamera(videoRef.current); // auto-start camera
-//   //       await loop(videoRef.current, setHud);// start detection
-//   //     }
-//   //   })();
-//   // }, []);
-
-//   useEffect(() => {
-//   (async () => {
-//     await loadModels('/models');
-//     applyAdaptation('focused');
-//     if (videoRef.current) {
-//       await startCamera(videoRef.current);     // start stream
-//       await loop(videoRef.current, setHud);    // start detection
-//     }
-//   })();
-//   }, []);
-
-//   return (
-//     <div className="app">
-//       <header>
-//         <h1>Emotion-Responsive UI</h1>
-//       </header>
-
-//       <main>
-//         <section className="left">
-//           <video
-//             ref={videoRef}
-//             autoPlay
-//             muted
-//             playsInline
-//             className="video"
-//           />
-//           <DebugHUD hud={hud} />
-//           <p className="privacy">All processing stays in your browser. No video is uploaded.</p>
-//         </section>
-//         <section className="right">
-//           <TaskArea />
-//         </section>
-//       </main>
-//     </div>
-//   );
-// }
-
-// App.tsx — simple UI to load models, start camera, and show live HUD
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { loadModels, startCamera, loop, stop, resetWindow } from './emotionEngine';
 import type { HUD } from './emotionEngine';
+import { subscribe, forceMode, getMode, type UIMode } from './adaptation';
 
-function useToggle(initial=false) {
-  const [v,setv] = useState(initial);
-  return { v, on:()=>setv(true), off:()=>setv(false), set:setv };
-}
+type Hotspot = { id: string; term: string; hint: string };
+
+const HOTSPOTS: Hotspot[] = [
+  { id: 'hs-1', term: 'Bayesian updating', hint: 'Update beliefs with evidence; prior × likelihood → posterior.' },
+  { id: 'hs-2', term: 'Cognitive load',    hint: 'Mental effort to process info; reduce via chunking & signaling.' },
+  { id: 'hs-3', term: 'Fitts’s Law',       hint: 'Pointing time ∝ distance/size; bigger/closer targets are faster.' },
+];
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [ready, setReady] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [hud, setHud] = useState<HUD| null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [ready, setReady]   = useState(false);
+  const [running, setRun]   = useState(false);
+  const [hud, setHud]       = useState<HUD | null>(null);
+  const [err, setErr]       = useState<string | null>(null);
+  const [uiMode, setUIMode] = useState<UIMode>(getMode());
+  const [locked, setLocked] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribe(setUIMode);
+    return () => { unsub(); };
+  }, []);
 
   useEffect(() => {
     (async () => {
       try {
-        await loadModels('/models'); // ensure models are available here
+        await loadModels('/models');
         setReady(true);
-      } catch (e:any) {
-        setErr(`Model load failed: ${e?.message || e}`);
-      }
+      } catch (e:any) { setErr(`Model load failed: ${e?.message || e}`); }
     })();
   }, []);
 
@@ -140,80 +42,161 @@ export default function App() {
       await startCamera(videoRef.current);
       resetWindow();
       await loop(videoRef.current, setHud);
-      setRunning(true);
-    } catch (e:any) {
-      setErr(`Camera start failed: ${e?.message || e}`);
-    }
+      setRun(true);
+    } catch (e:any) { setErr(`Camera start failed: ${e?.message || e}`); }
   }
-
   function onStop() {
     stop();
     const v = videoRef.current;
     const stream = (v?.srcObject as MediaStream | null);
     stream?.getTracks().forEach(t => t.stop());
     if (v) v.srcObject = null;
-    setRunning(false);
+    setRun(false);
   }
 
-  const s = hud?.scores || {};
-  const geom = hud?.geom || {};
+  // For confused hint placement
+  const firstVisibleHotspot = useVisibleHotspot();
+
+  // Manual preview buttons
+  const preview = (m: UIMode) => { setLocked(false); forceMode(m); };
 
   return (
-    <div className="app">
-      <header>
-        <h1>Emotion Detection (HCI Demo – detection only)</h1>
+    <div className={`app theme-${uiMode} ${locked ? 'locked' : ''}`}>
+      <header className="chrome">
+        <div className="brand">Emotion-Responsive Reader</div>
+        <div className="spacer" />
+        <div className="controls">
+          <button disabled={!ready || running} onClick={onStart}>
+            {ready ? 'Start Detection' : 'Loading models…'}
+          </button>
+          <button disabled={!running} onClick={onStop}>Stop</button>
+        </div>
       </header>
 
-      <section className="controls">
-        <button disabled={!ready || running} onClick={onStart}>
-          {ready ? 'Start Detection' : 'Loading models…'}
-        </button>
-        <button disabled={!running} onClick={onStop}>Stop</button>
-        {err && <div className="error">{err}</div>}
-      </section>
-
-      <section className="video-pane">
-        <video ref={videoRef} playsInline muted className="video"></video>
-      </section>
-
-      <section className="hud">
+      <div className="toolbar">
+        <span className="tag">Mode:</span>
+        <b className="mode">{uiMode}</b>
+        <button onClick={()=>setLocked(l=>!l)}>{locked ? 'Unlock UI' : 'Lock UI'}</button>
+        <span className="tag">Preview:</span>
         <div className="pill">
-          <div className="pill-row">
-            <span className="label">Label:</span>
-            <span className="value">{hud?.label ?? '—'}</span>
-            <span className="label small">conf</span>
-            <span className="value small">{hud ? hud.conf.toFixed(2) : '—'}</span>
-            <span className="label small">cooling</span>
-            <span className="value small">{hud ? Math.ceil((hud.cooling||0)/1000)+'s' : '0s'}</span>
-          </div>
-          <div className="bar-group">
-            {(['happy','focused','confused','frustrated'] as const).map(k => (
-              <div key={k} className="bar-row">
-                <div className="bar-label">{k}</div>
-                <div className="bar-track">
-                  <div
-                    className="bar-fill"
-                    style={{ width: `${Math.round(((s as any)[k]||0)*100)}%`}}
-                  />
-                </div>
-                <div className="bar-val">{((s as any)[k]||0).toFixed(2)}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="geom">
-            <div>furrowN: <b>{geom.furrowN?.toFixed(2) ?? '—'}</b></div>
-            <div>squintN: <b>{geom.squintN?.toFixed(2) ?? '—'}</b></div>
-            <div>mouthOpenN: <b>{geom.mouthOpenN?.toFixed(2) ?? '—'}</b></div>
-            <div>cornerDropN: <b>{geom.cornerDropN?.toFixed(2) ?? '—'}</b></div>
-          </div>
+          <button onClick={()=>preview('focused')}>Focused</button>
+          <button onClick={()=>preview('confused')}>Confused</button>
+          <button onClick={()=>preview('frustrated')}>Frustrated</button>
+          <button onClick={()=>preview('happy')}>Happy</button>
         </div>
-      </section>
+        {err && <div className="error">{err}</div>}
+      </div>
 
-      <footer>
-        <p>Tip: squint/furrow should raise <b>confused</b>; corners down should raise <b>frustrated</b>.</p>
+      <main className="layout">
+        <article className="reader" id="reader">
+          <h1>Designing for Cognitive Load: A Practical Guide</h1>
+          <p>
+            Effective interfaces minimize <HotspotSpan id="hs-2" term="Cognitive load" /> by chunking,
+            progressive disclosure, and clear visual hierarchies.
+          </p>
+          <p>
+            Under uncertainty, <HotspotSpan id="hs-1" term="Bayesian updating" /> can guide decision-making,
+            but explanations must be simplified for non-experts.
+          </p>
+          <p>
+            According to <HotspotSpan id="hs-3" term="Fitts’s Law" />, target size and distance
+            strongly affect pointing time; adaptive zoom can help when users squint.
+          </p>
+          <h2>Checklist</h2>
+          <ul>
+            <li>Use signaling (bold, color, icons) for key actions.</li>
+            <li>Chunk dense sections; reveal details on demand.</li>
+            <li>Offer inline help chips near terms that spike confusion.</li>
+          </ul>
+        </article>
+
+        <aside className="sidebar">
+          <h3>Notes</h3>
+          <p>Adaptive behaviors:</p>
+          <ul>
+            <li><b>Confused</b>: inline hint chip, zoom + line-height</li>
+            <li><b>Frustrated</b>: simplified UI (sidebar hides, colors mute)</li>
+            <li><b>Focused</b>: chrome dims, minimal distractions</li>
+            <li><b>Happy</b>: vivid colors, subtle flourish</li>
+          </ul>
+
+          {hud && (
+            <div className="hud">
+              <div className="row">
+                <span>Label:</span><b>{hud.label}</b>
+                <span>Conf:</span><b>{hud.conf.toFixed(2)}</b>
+              </div>
+              <div className="bars">
+                {(['happy','focused','confused','frustrated'] as const).map(k => (
+                  <div key={k} className="bar">
+                    <span className="k">{k}</span>
+                    <div className="track"><div className="fill" style={{width:`${Math.round(((hud.scores as any)[k]||0)*100)}%`}}/></div>
+                    <span className="v">{((hud.scores as any)[k]||0).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="camera">
+            <video ref={videoRef} playsInline muted />
+          </div>
+        </aside>
+      </main>
+
+      {/* Inline hint chip (visible in 'confused') */}
+      <HintChip visible={!locked && uiMode==='confused' && !!firstVisibleHotspot}
+                targetId={firstVisibleHotspot?.id}
+                text={useMemo(() => {
+                  const id = firstVisibleHotspot?.id;
+                  const hs = HOTSPOTS.find(h => h.id === id);
+                  return hs ? `${hs.term}: ${hs.hint}` : '';
+                }, [firstVisibleHotspot])}
+      />
+
+      <footer className="chrome">
+        <small>Static article · pre-annotated hotspots · on-device detection</small>
       </footer>
     </div>
   );
 }
 
+/* ---------- Helpers ---------- */
+
+function HotspotSpan({ id, term }: { id: string; term: string }) {
+  return <span className="hotspot" data-hsid={id} id={id}>{term}</span>;
+}
+
+function useVisibleHotspot(): { id: string } | null {
+  const [current, setCurrent] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    const obs = new IntersectionObserver((entries) => {
+      const onscreen = entries.filter(e => e.isIntersecting && (e.target as HTMLElement).classList.contains('hotspot'));
+      if (onscreen[0]) setCurrent({ id: (onscreen[0].target as HTMLElement).id });
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0.2 });
+    document.querySelectorAll('.hotspot').forEach(el => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+  return current;
+}
+
+function HintChip({ visible, targetId, text }: { visible: boolean; targetId?: string; text: string }) {
+  const [style, setStyle] = useState<React.CSSProperties>({});
+  useEffect(() => {
+    if (!visible || !targetId) return;
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const top = rect.top + window.scrollY - 8;
+    const left = rect.left + window.scrollX + rect.width + 8;
+    setStyle({ top, left });
+  }, [visible, targetId, text]);
+
+  return (
+    <div className={`hint-chip ${visible ? 'show' : ''}`} style={style} role="status" aria-live="polite">
+      <span className="dot" />
+      <span className="text">{text}</span>
+      <button className="btn" onClick={() => forceMode('focused')}>Got it</button>
+    </div>
+  );
+}

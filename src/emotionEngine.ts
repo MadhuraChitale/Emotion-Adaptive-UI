@@ -8,19 +8,19 @@ export type ExpressionProbs = Record<string, number>;
 const WINDOW: ExpressionProbs[] = [];
 const MAXW = 15;
 const THRESH = 0.35;
-const DWELL_MS = 1200;
-const COOLDOWN_MS = 4500;
+const DWELL_MS = 800;      // snappier so UI changes are visible
+const COOLDOWN_MS = 1200;  // short cooldown for demo
 
 let currentLabel: EmotionLabel = 'focused';
 let cooldownUntil = 0;
 let lastCandidate: { label: EmotionLabel; since: number } | null = null;
 let stopLoop = false;
 
-// --- Calibration state (learn your neutral face for ~1–2s) ---
+// --- Calibration state ---
 let calCount = 0;
-let baseBetweenN = 0; // neutral inner-brow distance / IPD
-let baseEAR = 0;      // neutral eye aspect ratio
-const CAL_FRAMES = 90; // ~1.5s at 60fps
+let baseBetweenN = 0;
+let baseEAR = 0;
+const CAL_FRAMES = 90;
 
 export async function loadModels(base = '/models') {
   await Promise.all([
@@ -31,7 +31,6 @@ export async function loadModels(base = '/models') {
 }
 
 export async function startCamera(videoEl: HTMLVideoElement) {
-  // Stop old stream if any
   const old = videoEl.srcObject as MediaStream | null;
   old?.getTracks().forEach(t => t.stop());
   videoEl.srcObject = null;
@@ -48,14 +47,11 @@ export async function startCamera(videoEl: HTMLVideoElement) {
     else videoEl.addEventListener('loadedmetadata', onMeta, { once: true });
   });
 
-  try {
-    await videoEl.play();
-  } catch (e: any) {
-    if (e?.name === 'AbortError') {
-      if (videoEl.paused) await videoEl.play().catch(() => {});
-    } else throw e;
+  try { await videoEl.play(); }
+  catch (e:any) {
+    if (e?.name === 'AbortError') { if (videoEl.paused) await videoEl.play().catch(()=>{}); }
+    else throw e;
   }
-
   return stream;
 }
 
@@ -74,9 +70,7 @@ function updateCalibration(landmarks: any) {
   const L = [36,37,38,39,40,41].map(i => p[i]);
   const R = [42,43,44,45,46,47].map(i => p[i]);
   const ear = (eye:any[]) => {
-    const v1 = dist(eye[1], eye[5]);
-    const v2 = dist(eye[2], eye[4]);
-    const h  = dist(eye[0], eye[3]);
+    const v1 = dist(eye[1], eye[5]), v2 = dist(eye[2], eye[4]), h = dist(eye[0], eye[3]);
     return (v1 + v2) / (2*h + 1e-6);
   };
   const ear_now = (ear(L) + ear(R)) / 2;
@@ -87,58 +81,50 @@ function updateCalibration(landmarks: any) {
   baseEAR      = baseEAR * (1 - k) + ear_now * k;
 }
 
-// Calibrated brow furrow: how much current inner-brow distance shrinks vs baseline
 function browFurrow(landmarks: any) {
   const p = landmarks?.positions; if (!p) return 0;
   const lB = p[21], rB = p[22], L_in = p[39], R_in = p[42], nose = p[27];
   const ipd = dist(L_in, R_in) + 1e-6;
 
-  const betweenN_now = dist(lB, rB) / ipd;           // normalized inner-brow gap
+  const betweenN_now = dist(lB, rB) / ipd;
   const browMidY = (lB.y + rB.y) / 2;
-  const dropN = (browMidY - nose.y) / ipd;           // vertical drop vs nose
+  const dropN = (browMidY - nose.y) / ipd;
 
-  const baseB = baseBetweenN || 0.48;                // fallback pivot if not calibrated yet
+  const baseB = baseBetweenN || 0.48;
   const shrink = Math.max(0, baseB - betweenN_now);
 
-  // Sensitivity: 0.09 IPD shrink ≈ strong furrow (tune as needed)
   const closeScore = Math.min(1, shrink / 0.09);
   const dropScore  = Math.min(1, Math.max(0, (dropN - 0.02) / 0.14));
 
-  const furrow = Math.max(0, Math.min(1, 0.75*closeScore + 0.25*dropScore));
-  return furrow;
+  return Math.max(0, Math.min(1, 0.75*closeScore + 0.25*dropScore));
 }
 
-// Lip corner drop: corners (48,54) lower than mouth center (51↔57 mid-Y)
 function mouthCornerDrop(landmarks: any) {
   const p = landmarks?.positions; if (!p) return 0;
   const left = p[48], right = p[54], top = p[51], bottom = p[57];
   const centerY = (top.y + bottom.y) / 2;
   const drop = ((left.y - centerY) + (right.y - centerY)) / 2;
   const width = dist(left, right) + 1e-6;
-  return Math.max(0, drop) / width; // 0..~0.15+
+  return Math.max(0, drop) / width;
 }
 
-// Mouth opening: vertical gap (51↔57) / mouth width (48↔54)
 function mouthOpen(landmarks: any) {
   const p = landmarks?.positions; if (!p) return 0;
   const top = p[51], bottom = p[57], left = p[48], right = p[54];
   const gap = Math.max(0, bottom.y - top.y);
   const width = dist(left, right) + 1e-6;
-  return gap / width; // 0..~0.6
+  return gap / width;
 }
 
-// Eye Aspect Ratio (EAR) — lower ⇒ squint/blink
 function eyeAspectRatio(landmarks: any) {
   const p = landmarks?.positions; if (!p) return 0.30;
   const L = [36,37,38,39,40,41].map(i => p[i]);
   const R = [42,43,44,45,46,47].map(i => p[i]);
   const ear = (eye:any[]) => {
-    const v1 = dist(eye[1], eye[5]);
-    const v2 = dist(eye[2], eye[4]);
-    const h  = dist(eye[0], eye[3]);
+    const v1 = dist(eye[1], eye[5]), v2 = dist(eye[2], eye[4]), h = dist(eye[0], eye[3]);
     return (v1 + v2) / (2*h + 1e-6);
   };
-  return (ear(L) + ear(R)) / 2; // ~0.30 open, ~0.18 squint
+  return (ear(L) + ear(R)) / 2;
 }
 
 function pushProbs(expr: ExpressionProbs) {
@@ -164,28 +150,22 @@ function mapToFourWithHeur(
   const disgusted = avg.disgusted ?? 0;
   const surprised = avg.surprised ?? 0;
 
-  // Geometry normalization
-  const furrowN     = Math.min(1, Math.max(0, heur.furrow));            // 0..1
-  const cornerDropN = Math.min(1, Math.max(0, heur.cornerDrop));        // 0..1
-  const mOpenRaw    = heur.mOpen ?? 0;                                   // 0..~0.6
+  const furrowN     = Math.min(1, Math.max(0, heur.furrow));
+  const cornerDropN = Math.min(1, Math.max(0, heur.cornerDrop));
+  const mOpenRaw    = heur.mOpen ?? 0;
   const mouthOpenN  = Math.min(1, Math.max(0, (mOpenRaw - 0.10) / 0.30));
   const earRaw      = heur.ear ?? (baseEAR || 0.30);
-  const squintN     = Math.min(1, Math.max(0, ((baseEAR || 0.30) - earRaw) / 0.12)); // calibrated
+  const squintN     = Math.min(1, Math.max(0, ((baseEAR || 0.30) - earRaw) / 0.12));
 
-  // Dampen neutral/happy under “thinking” geometry
   const thinkGeom = Math.min(1, 0.6*furrowN + 0.6*squintN + 0.2*cornerDropN - 0.2*mouthOpenN);
-  const neutralDamp = 1 - 0.45*thinkGeom; // [0.55,1]
+  const neutralDamp = 1 - 0.45*thinkGeom;
   neutral *= neutralDamp;
   happy   *= (1 - 0.35*(furrowN + squintN));
 
-  // ============================================================
-  // RULE-PRIORITY OVERRIDES
-  // ============================================================
-
-  // PURE FURROW ⇒ CONFUSED (just frowning eyebrows)
-  const strongFurrow  = furrowN >= 0.45;   // calibrated threshold (tune 0.42–0.55)
+  // PURE FURROW ⇒ CONFUSED (no big mouth-open, no strong corner drop)
+  const strongFurrow  = furrowN >= 0.45;
   const mouthClosed   = mouthOpenN <= 0.30;
-  const lowCornerDrop = cornerDropN <= 0.12; // ensure it's not a real mouth-down frown
+  const lowCornerDrop = cornerDropN <= 0.12;
 
   if (strongFurrow && mouthClosed && lowCornerDrop) {
     const geomConf = Math.min(1, 0.85*furrowN + 0.15*squintN);
@@ -204,11 +184,6 @@ function mapToFourWithHeur(
     };
   }
 
-  // ============================================================
-  // BASE SCORES (no override)
-  // ============================================================
-
-  // Frustrated needs real lip-corner drop; subtract furrow so frown alone doesn't leak here
   const frustratedCore =
       1.00*cornerDropN
     + 0.30*angry + 0.25*disgusted + 0.18*sad
@@ -216,8 +191,7 @@ function mapToFourWithHeur(
     - 0.25*furrowN;
   const frustrated = (cornerDropN >= 0.12) ? frustratedCore : 0.02;
 
-  // Confused prefers furrow; penalize mouth-open; never drop below a fraction of furrow
-  const surprisedAssist = Math.min(0.03, 0.03*(fearful + surprised)); // tiny cap
+  const surprisedAssist = Math.min(0.03, 0.03*(fearful + surprised));
   const confusedCore =
       1.05*furrowN
     + 0.25*squintN
@@ -239,7 +213,6 @@ function mapToFourWithHeur(
   const sum  = Object.values(min0).reduce((a,b)=>a+(b as number),0) || 1;
   const scores = Object.fromEntries(Object.entries(min0).map(([k,v]) => [k, (v as number)/sum]));
 
-  // Pick top label from fixed set (keeps typing narrow)
   const order = ['happy','focused','confused','frustrated'] as const;
   let top: EmotionLabel = 'focused';
   let topVal = -1;
@@ -260,7 +233,7 @@ function smoothedDecision(
   heur: { furrow: number; cornerDrop: number; mOpen?: number; ear?: number }
 ): { label: EmotionLabel; conf: number; scores: Record<string, number>; geom: any } {
   if (WINDOW.length < Math.floor(MAXW * 0.6)) {
-    return { label: currentLabel, conf: 1, scores: {}, geom: {} }; // warmup
+    return { label: currentLabel, conf: 1, scores: {}, geom: {} };
   }
   const avg: ExpressionProbs = {};
   for (const row of WINDOW) {
@@ -293,11 +266,11 @@ export async function loop(videoEl: HTMLVideoElement, onHud?: (hud: HUD) => void
       .withFaceLandmarks(true)
       .withFaceExpressions();
 
-    if (det?.expressions) pushProbs(det.expressions as any);
+    if (det?.expressions) pushProbs(det?.expressions as any);
 
     let furrow = 0, cornerDrop = 0, mOpen = 0, ear = 0.30;
     if (det?.landmarks) {
-      updateCalibration(det.landmarks);              // learn baseline early
+      updateCalibration(det.landmarks);
       furrow     = browFurrow(det.landmarks);
       cornerDrop = mouthCornerDrop(det.landmarks);
       mOpen      = mouthOpen(det.landmarks);
@@ -309,13 +282,12 @@ export async function loop(videoEl: HTMLVideoElement, onHud?: (hud: HUD) => void
     const now = Date.now();
     const cooling = Math.max(0, cooldownUntil - now);
 
-    // dwell + cooldown state machine
     if (now > cooldownUntil && conf >= THRESH && label !== currentLabel) {
       if (!lastCandidate || lastCandidate.label !== label) {
         lastCandidate = { label, since: now };
       } else if (now - lastCandidate.since >= DWELL_MS) {
         currentLabel = label;
-        applyAdaptation(label);
+        applyAdaptation(label);              // <-- drives the UI
         cooldownUntil = now + COOLDOWN_MS;
         lastCandidate = null;
       }
@@ -336,8 +308,5 @@ export function resetWindow() {
   currentLabel = 'focused';
   lastCandidate = null;
   cooldownUntil = 0;
-  // reset calibration so next start re-learns neutral
-  calCount = 0;
-  baseBetweenN = 0;
-  baseEAR = 0;
+  calCount = 0; baseBetweenN = 0; baseEAR = 0;
 }

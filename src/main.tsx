@@ -1,4 +1,3 @@
-// main.tsx — standard React 18 entry
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
