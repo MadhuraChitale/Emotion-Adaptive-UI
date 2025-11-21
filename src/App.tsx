@@ -6,9 +6,24 @@ import { subscribe, forceMode, getMode, type UIMode } from './adaptation';
 type Hotspot = { id: string; term: string; hint: string };
 
 const HOTSPOTS: Hotspot[] = [
-  { id: 'hs-1', term: 'Bayesian updating', hint: 'Prior × likelihood → posterior; update beliefs using evidence.' },
-  { id: 'hs-2', term: 'Cognitive load',    hint: 'Mental effort needed to process content; reduce via chunking.' },
-  { id: 'hs-3', term: 'Fitts’s Law',       hint: 'Pointing time depends on distance and size; bigger, closer targets are easier.' },
+  { id: 'hs-crypto-1',  term: 'RSA encryption', hint: 'A public-key system based on factoring large primes.' },
+  { id: 'hs-crypto-2',  term: 'Elliptic Curve Cryptography', hint: 'Efficient public-key cryptography using elliptic curves.' },
+  { id: 'hs-crypto-3',  term: 'prime factorization problem', hint: 'Hard problem: finding prime factors of a large integer.' },
+  { id: 'hs-crypto-4',  term: 'one-way function', hint: 'Easy to compute but hard to invert without a secret.' },
+  { id: 'hs-crypto-5',  term: 'computational asymmetry', hint: 'A task that is easy one way but expensive in reverse.' },
+  { id: 'hs-crypto-6',  term: 'public key infrastructure', hint: 'System for verifying identities across the internet.' },
+  { id: 'hs-crypto-7',  term: 'certificate authorities', hint: 'Trusted organizations that issue digital certificates.' },
+  { id: 'hs-crypto-8',  term: 'hash functions', hint: 'Algorithms that map input to fixed-length output.' },
+  { id: 'hs-crypto-9',  term: 'collision resistance', hint: 'Hard to find two inputs producing the same hash.' },
+  { id: 'hs-crypto-10', term: 'quantum algorithms', hint: 'Algorithms that leverage quantum computing power.' },
+  { id: 'hs-crypto-11', term: 'Shor’s algorithm', hint: 'Quantum algorithm that factors integers efficiently.' },
+  { id: 'hs-crypto-12', term: 'post-quantum cryptography', hint: 'Cryptosystems designed to resist quantum attacks.' },
+  { id: 'hs-crypto-13', term: 'zero-knowledge proofs', hint: 'Prove knowledge without revealing information.' },
+  { id: 'hs-crypto-14', term: 'zk-SNARK', hint: 'Efficient zero-knowledge proof system.' },
+  { id: 'hs-crypto-15', term: 'trusted setup ceremony', hint: 'Process that initializes certain ZK systems.' },
+  { id: 'hs-crypto-16', term: 'homomorphic encryption', hint: 'Compute on encrypted data without decrypting it.' },
+  { id: 'hs-crypto-17', term: 'secure multi-party computation', hint: 'Collaborative computation without revealing secrets.' },
+  { id: 'hs-crypto-18', term: 'key management', hint: 'Practices around generating and storing cryptographic keys.' },
 ];
 
 export default function App() {
@@ -24,6 +39,9 @@ export default function App() {
   const lockedRef               = useRef(false);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // NEW: hovered hotspot id for hover-based hints
+  const [hoveredHotspot, setHoveredHotspot] = useState<string | null>(null);
 
   // keep ref synced so subscribe callback sees latest locked state
   useEffect(() => {
@@ -76,13 +94,13 @@ export default function App() {
   }
 
   // LOCK: freeze mode + close side panel
-  // UNLOCK: reopen side panel (detector continues updating mode)
+  // UNLOCK: reopen side panel (detector continues updating mode) – current behavior
   function toggleLock() {
-    if(!locked){
+    if (!locked) {
       setLocked(true);
       setSidebarOpen(false);
-      if(running) onStop();
-    } else{
+      if (running) onStop();
+    } else {
       setLocked(false);
       setSidebarOpen(true);
       onStart();
@@ -94,9 +112,6 @@ export default function App() {
     if (locked) return;
     forceMode(m);
   }
-
-  // which hotspot is currently visible in viewport?
-  const visibleHotspot = useVisibleHotspot();
 
   return (
     <div className={`app theme-${uiMode} ${locked ? 'locked' : ''}`}>
@@ -111,88 +126,131 @@ export default function App() {
             </button>
             <button disabled={!running} onClick={onStop}>Stop</button>
           </div>
-
         </div>
-        
+
         {/* Toolbar */}
-      <div className="toolbar">
-        <div className='toolbar-left'>
-          <span className="tag">Mode:</span>
-          <b className="mode">{uiMode}</b>
-  
-          <button onClick={toggleLock}>{locked ? 'Unlock UI' : 'Lock UI'}</button>
-  
-          <span className="tag">Preview:</span>
-          <div className="pill">
-            <button onClick={() => preview('focused')}>Focused</button>
-            <button onClick={() => preview('confused')}>Confused</button>
-            <button onClick={() => preview('frustrated')}>Frustrated</button>
-            <button onClick={() => preview('happy')}>Happy</button>
-          </div>
-  
-  
-          {error && <div className="error">{error}</div>}
-        </div>
-        <div className='toolbar-right'>
-          <button onClick={() => setSidebarOpen(s => !s)}>
-            {sidebarOpen ? 'Hide Side Panel' : 'Show Side Panel'}
-          </button>
-        </div>
-        
-      </div>
-      </header>
+        <div className="toolbar">
+          <div className="toolbar-left">
+            <span className="tag">Mode:</span>
+            <b className="mode">{uiMode}</b>
 
-      
+            <button onClick={toggleLock}>{locked ? 'Unlock UI' : 'Lock UI'}</button>
+
+            <span className="tag">Preview:</span>
+            <div className="pill">
+              <button onClick={() => preview('focused')}>Focused</button>
+              <button onClick={() => preview('confused')}>Confused</button>
+              <button onClick={() => preview('frustrated')}>Frustrated</button>
+              <button onClick={() => preview('happy')}>Happy</button>
+            </div>
+
+            {error && <div className="error">{error}</div>}
+          </div>
+          <div className="toolbar-right">
+            <button onClick={() => setSidebarOpen(s => !s)}>
+              {sidebarOpen ? 'Hide Side Panel' : 'Show Side Panel'}
+            </button>
+          </div>
+        </div>
+      </header>
 
       {/* Main layout */}
       <main className={`layout ${sidebarOpen ? 'layout--with-sidebar' : 'layout--no-sidebar'}`}>
         {/* LEFT: big article */}
         <article className="reader" id="reader">
-          <h1>Designing for Cognitive Load: A Practical Guide</h1>
+          <h1>Understanding Modern Cryptography: A Deep Dive into Digital Security</h1>
 
           <p>
-            Effective interfaces minimize <HotspotSpan id="hs-2" term="Cognitive load" /> by chunking,
-            progressive disclosure, and clear visual hierarchies. When too many elements compete for
-            attention, people skim instead of reading and miss important cues. A tired or anxious
-            reader hits this limit even faster.
+            Modern cryptography is built on the idea that certain mathematical problems are
+            computationally expensive to solve. The security of systems like{' '}
+            <HotspotSpan id="hs-crypto-1" term="RSA encryption" onHover={setHoveredHotspot} /> and{' '}
+            <HotspotSpan id="hs-crypto-2" term="Elliptic Curve Cryptography" onHover={setHoveredHotspot} /> depends on
+            how difficult it is to reverse a function without a secret key. These systems
+            rely on assumptions like the{' '}
+            <HotspotSpan id="hs-crypto-3" term="prime factorization problem" onHover={setHoveredHotspot} /> being
+            computationally intractable.
           </p>
 
           <p>
-            Under uncertainty, <HotspotSpan id="hs-1" term="Bayesian updating" /> can guide
-            decision-making, but explanations must be simplified for non-experts. Designers rarely use
-            probability notation, yet every progress bar and status message implicitly updates a user’s
-            belief about “how close they are to success”. If that feedback is noisy or delayed, users
-            experience confusion and mistrust.
+            At the heart of secure digital communication lies the concept of a{' '}
+            <HotspotSpan id="hs-crypto-4" term="one-way function" onHover={setHoveredHotspot} />, which is easy to compute
+            but hard to invert. For example, multiplying two large primes is easy, but
+            deriving those primes back from the product is extremely difficult. This is
+            known as{' '}
+            <HotspotSpan id="hs-crypto-5" term="computational asymmetry" onHover={setHoveredHotspot} />, a foundational
+            idea in cryptography.
           </p>
 
           <p>
-            According to <HotspotSpan id="hs-3" term="Fitts’s Law" />, target size and distance strongly
-            affect pointing time. Adaptive zoom and generous hit-areas can help when users squint, lean
-            forward, or use a small trackpad. Instead of assuming ideal desktop conditions, an adaptive
-            reader can react to real-time signals like facial tension and blink rate.
+            Another important idea is{' '}
+            <HotspotSpan id="hs-crypto-6" term="public key infrastructure" onHover={setHoveredHotspot} />, a system that
+            helps verify identities online. Websites use it when they present you with a
+            certificate proving they are who they claim to be. These certificates depend on{' '}
+            <HotspotSpan id="hs-crypto-7" term="certificate authorities" onHover={setHoveredHotspot} />, which act as
+            trusted third parties.
           </p>
 
           <p>
-            In long-form reading, cognitive load is also about micro decisions: “Should I click this
-            side link?”, “Is this term important?”, “Will something break if I press back?”. A good
-            reading interface quietly answers these questions using headings, typography, and inline
-            help chips that guide the eye through dense material.
+            However, not all cryptographic tools provide the same type of protection. For
+            example, <HotspotSpan id="hs-crypto-8" term="hash functions" onHover={setHoveredHotspot} /> are used for
+            verifying integrity rather than confidentiality. A good hash function has the
+            property of <HotspotSpan id="hs-crypto-9" term="collision resistance" onHover={setHoveredHotspot} />, meaning
+            it is extremely unlikely for two different inputs to produce the same hash.
+            Achieving collision resistance requires careful design and mathematical rigor.
           </p>
 
           <p>
-            Emotion-responsive interfaces extend this idea by monitoring subtle signs of confusion and
-            frustration. When the system detects a frown, it can increase line-height, slightly zoom
-            the text, and surface a short explanation next to the most likely hotspot term. When the
-            reader relaxes again, the interface gently returns to a compact layout, avoiding jarring
-            jumps or playful animations that might distract.
+            As computing power increases, especially with the rise of{' '}
+            <HotspotSpan id="hs-crypto-10" term="quantum algorithms" onHover={setHoveredHotspot} />, traditional systems
+            may become vulnerable. For example,{' '}
+            <HotspotSpan id="hs-crypto-11" term="Shor’s algorithm" onHover={setHoveredHotspot} /> can theoretically
+            break RSA by factoring large numbers efficiently on a quantum computer. This
+            has led to the development of{' '}
+            <HotspotSpan id="hs-crypto-12" term="post-quantum cryptography" onHover={setHoveredHotspot} />, which focuses
+            on designing systems resistant to quantum attacks.
           </p>
 
           <p>
-            Over-helpful behaviour can itself become a source of cognitive load. If hints appear too
-            often or in the wrong place, users may feel watched or interrupted. That’s why it is
-            important to combine automatic adaptations with simple controls: the ability to lock the
-            UI, collapse the side panel, or dismiss a hint with one click. These controls make the
-            adaptation feel like a collaboration, not a black box.
+            A particularly challenging area is{' '}
+            <HotspotSpan id="hs-crypto-13" term="zero-knowledge proofs" onHover={setHoveredHotspot} />, which allow one
+            party to prove they know something without revealing the information itself.
+            This idea powers privacy-focused systems such as anonymous credentials and
+            cryptocurrency protocols. One widely used system is the{' '}
+            <HotspotSpan id="hs-crypto-14" term="zk-SNARK" onHover={setHoveredHotspot} />, which enables efficient
+            verification of complex statements.
+          </p>
+
+          <p>
+            Despite their usefulness, zero-knowledge systems can be fragile. They require
+            precise implementation to avoid vulnerabilities. A mistake in the{' '}
+            <HotspotSpan id="hs-crypto-15" term="trusted setup ceremony" onHover={setHoveredHotspot} /> can compromise
+            the entire system. This is why researchers invest heavily in audits and
+            formal verification.
+          </p>
+
+          <p>
+            The field continues to evolve rapidly. New approaches such as{' '}
+            <HotspotSpan id="hs-crypto-16" term="homomorphic encryption" onHover={setHoveredHotspot} /> allow
+            computations to be performed on encrypted data without needing to decrypt it
+            first — a breakthrough for secure cloud computing. Another emerging idea is{' '}
+            <HotspotSpan id="hs-crypto-17" term="secure multi-party computation" onHover={setHoveredHotspot} />, enabling
+            multiple parties to collaborate on a computation without revealing their private
+            inputs.
+          </p>
+
+          <p>
+            Modern cryptography is not just about mathematics. Human factors also matter
+            significantly. Many real-world attacks exploit weaknesses in{' '}
+            <HotspotSpan id="hs-crypto-18" term="key management" onHover={setHoveredHotspot} /> or poor implementation
+            practices. Even the strongest encryption fails if a private key is stored
+            insecurely.
+          </p>
+
+          <p>
+            Understanding these concepts requires substantial effort. But by mastering the
+            building blocks — from <HotspotSpan id="hs-crypto-1" term="RSA" onHover={setHoveredHotspot} /> to{' '}
+            <HotspotSpan id="hs-crypto-16" term="homomorphic encryption" onHover={setHoveredHotspot} /> — one gains a
+            deeper appreciation of how digital security is achieved in the modern world.
           </p>
 
           <h2>Checklist</h2>
@@ -250,58 +308,41 @@ export default function App() {
         )}
       </main>
 
-      {/* Hint chip – only when confused, unlocked, and a hotspot is visible */}
+      {/* Hint chip – only when confused, unlocked, AND hovering a hotspot */}
       <HintChip
-        visible={!locked && uiMode === 'confused' && !!visibleHotspot}
-        targetId={visibleHotspot?.id}
+        visible={!locked && uiMode === 'confused' && !!hoveredHotspot}
+        targetId={hoveredHotspot ?? undefined}
         text={useMemo(() => {
-          const id = visibleHotspot?.id;
-          const hs = HOTSPOTS.find(h => h.id === id);
+          const hs = HOTSPOTS.find(h => h.id === hoveredHotspot);
           return hs ? `${hs.term}: ${hs.hint}` : '';
-        }, [visibleHotspot])}
+        }, [hoveredHotspot])}
       />
-
-      <footer className="chrome">
-        <small>Static article · pre-annotated hotspots · on-device detection</small>
-      </footer>
     </div>
   );
 }
 
 /* ---------- Small helpers ---------- */
 
-function HotspotSpan({ id, term }: { id: string; term: string }) {
+function HotspotSpan({
+  id,
+  term,
+  onHover,
+}: {
+  id: string;
+  term: string;
+  onHover: (id: string | null) => void;
+}) {
   return (
-    <span className="hotspot" id={id} data-hsid={id}>
+    <span
+      className="hotspot"
+      id={id}
+      data-hsid={id}
+      onMouseEnter={() => onHover(id)}
+      onMouseLeave={() => onHover(null)}
+    >
       {term}
     </span>
   );
-}
-
-function useVisibleHotspot(): { id: string } | null {
-  const [current, setCurrent] = useState<{ id: string } | null>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      entries => {
-        const onscreen = entries.find(
-          e =>
-            e.isIntersecting &&
-            (e.target as HTMLElement).classList.contains('hotspot')
-        );
-        if (onscreen) {
-          setCurrent({ id: (onscreen.target as HTMLElement).id });
-        }
-      },
-      { threshold: 0.2, rootMargin: '-10% 0px -70% 0px' }
-    );
-
-    document.querySelectorAll('.hotspot').forEach(el => observer.observe(el));
-
-    return () => observer.disconnect();
-  }, []);
-
-  return current;
 }
 
 function HintChip({
@@ -327,13 +368,12 @@ function HintChip({
     setStyle({ top, left });
   }, [visible, targetId, text]);
 
+  if (!visible) return null;
+
   return (
     <div className={`hint-chip ${visible ? 'show' : ''}`} style={style}>
       <span className="dot" />
       <span className="text">{text}</span>
-      <button className="btn" onClick={() => forceMode('focused')}>
-        Got it
-      </button>
     </div>
   );
 }
