@@ -97,6 +97,7 @@ export default function App() {
   // UNLOCK: reopen side panel (detector continues updating mode) – current behavior
   function toggleLock() {
     if (!locked) {
+      console.log(uiMode);
       setLocked(true);
       setSidebarOpen(false);
       if (running) onStop();
@@ -267,16 +268,16 @@ export default function App() {
         {sidebarOpen && (
           <aside className="sidebar">
             <div className="sidebar-header">
-              <h3>Notes</h3>
+              <h3>Emotion Detection</h3>
             </div>
 
-            <p>Adaptive behaviors:</p>
+            {/* <p>Adaptive behaviors:</p>
             <ul>
               <li><b>Confused</b>: inline hint chip, zoom, increased line-height</li>
               <li><b>Frustrated</b>: simplified UI, muted colors</li>
               <li><b>Focused</b>: chrome dimming, minimal distractions</li>
               <li><b>Happy</b>: vivid colors, subtle flourish</li>
-            </ul>
+            </ul> */}
 
             {hud && (
               <div className="hud">
@@ -310,7 +311,7 @@ export default function App() {
 
       {/* Hint chip – only when confused, unlocked, AND hovering a hotspot */}
       <HintChip
-        visible={!locked && uiMode === 'confused' && !!hoveredHotspot}
+        visible={uiMode === 'confused' && !!hoveredHotspot}
         targetId={hoveredHotspot ?? undefined}
         text={useMemo(() => {
           const hs = HOTSPOTS.find(h => h.id === hoveredHotspot);
