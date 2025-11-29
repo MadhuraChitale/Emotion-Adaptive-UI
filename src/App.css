@@ -600,3 +600,91 @@ body{
   z-index: 2000;
   transition: width 0.2s ease;
 }
+/* Clarify button – fixed to viewport, near the right edge */
+.clarify-main-btn {
+  position: fixed;
+  top: 50%;                     /* vertically centered */
+  transform: translateY(-50%);
+  right: 320px;                  /* button hugs the right side */
+  z-index: 1000;
+  background: rgba(124, 58, 237, 0.95);
+  color: #f9fafb;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clarify-main-btn:hover {
+  background: rgba(109, 40, 217, 1);
+}
+
+/* Clarify overlay – also fixed, to the LEFT of the button */
+.clarify-overlay {
+  position: fixed;
+  top: 50%;                      /* vertically centered like the button */
+  transform: translateY(-50%);
+  right: 120px;                  /* > 24px → visually to the left of the button */
+  z-index: 1100;                 /* above main UI */
+}
+
+.clarify-overlay-panel {
+  width: 320px;
+  max-height: calc(100vh - 140px);
+  background: #0f172a;
+  color: #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clarify-overlay-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.clarify-overlay-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.clarify-overlay-subtitle {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.clarify-overlay-close {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.clarify-overlay-close:hover {
+  color: #e5e7eb;
+}
+
+.clarify-overlay-body {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.clarify-error {
+  color: #fecaca;
+}

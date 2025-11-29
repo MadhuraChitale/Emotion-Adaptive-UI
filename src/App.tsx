@@ -1,3 +1,4 @@
+// App.tsx
 import React, {
   useEffect,
   useMemo,
@@ -5,6 +6,7 @@ import React, {
   useState,
   type CSSProperties,
 } from 'react';
+import { createPortal } from 'react-dom';
 import './App.css';
 import {
   loadModels,
@@ -15,19 +17,24 @@ import {
   type HUD,
 } from './emotionEngine';
 import { subscribe, forceMode, getMode, type UIMode } from './adaptation';
+import { askLLM } from './llmClient';
+
+/** ------------------------------------------------------------------ */
+/** Hotspots (for hint chips)                                          */
+/** ------------------------------------------------------------------ */
 
 type Hotspot = { id: string; term: string; hint: string };
 
 const HOTSPOTS: Hotspot[] = [
-  { id: 'hs-crypto-1',  term: 'RSA encryption', hint: 'A public-key system based on factoring large primes.' },
-  { id: 'hs-crypto-2',  term: 'Elliptic Curve Cryptography', hint: 'Efficient public-key cryptography using elliptic curves.' },
-  { id: 'hs-crypto-3',  term: 'prime factorization problem', hint: 'Hard problem: finding prime factors of a large integer.' },
-  { id: 'hs-crypto-4',  term: 'one-way function', hint: 'Easy to compute but hard to invert without a secret.' },
-  { id: 'hs-crypto-5',  term: 'computational asymmetry', hint: 'A task that is easy one way but expensive in reverse.' },
-  { id: 'hs-crypto-6',  term: 'public key infrastructure', hint: 'System for verifying identities across the internet.' },
-  { id: 'hs-crypto-7',  term: 'certificate authorities', hint: 'Trusted organizations that issue digital certificates.' },
-  { id: 'hs-crypto-8',  term: 'hash functions', hint: 'Algorithms that map input to fixed-length output.' },
-  { id: 'hs-crypto-9',  term: 'collision resistance', hint: 'Hard to find two inputs producing the same hash.' },
+  { id: 'hs-crypto-1', term: 'RSA encryption', hint: 'A public-key system based on factoring large primes.' },
+  { id: 'hs-crypto-2', term: 'Elliptic Curve Cryptography', hint: 'Efficient public-key cryptography using elliptic curves.' },
+  { id: 'hs-crypto-3', term: 'prime factorization problem', hint: 'Hard problem: finding prime factors of a large integer.' },
+  { id: 'hs-crypto-4', term: 'one-way function', hint: 'Easy to compute but hard to invert without a secret.' },
+  { id: 'hs-crypto-5', term: 'computational asymmetry', hint: 'A task that is easy one way but expensive in reverse.' },
+  { id: 'hs-crypto-6', term: 'public key infrastructure', hint: 'System for verifying identities across the internet.' },
+  { id: 'hs-crypto-7', term: 'certificate authorities', hint: 'Trusted organizations that issue digital certificates.' },
+  { id: 'hs-crypto-8', term: 'hash functions', hint: 'Algorithms that map input to fixed-length output.' },
+  { id: 'hs-crypto-9', term: 'collision resistance', hint: 'Hard to find two inputs producing the same hash.' },
   { id: 'hs-crypto-10', term: 'quantum algorithms', hint: 'Algorithms that leverage quantum computing power.' },
   { id: 'hs-crypto-11', term: 'Shor’s algorithm', hint: 'Quantum algorithm that factors integers efficiently.' },
   { id: 'hs-crypto-12', term: 'post-quantum cryptography', hint: 'Cryptosystems designed to resist quantum attacks.' },
@@ -38,6 +45,99 @@ const HOTSPOTS: Hotspot[] = [
   { id: 'hs-crypto-17', term: 'secure multi-party computation', hint: 'Collaborative computation without revealing secrets.' },
   { id: 'hs-crypto-18', term: 'key management', hint: 'Practices around generating and storing cryptographic keys.' },
 ];
+
+/** ------------------------------------------------------------------ */
+/** Article text (plain) for LLM – paragraph-wise                      */
+/** ------------------------------------------------------------------ */
+
+const ARTICLE_PARAGRAPHS_TEXT: string[] = [
+  `Modern cryptography is built on the idea that certain mathematical problems are computationally expensive to solve. The security of systems like RSA encryption and Elliptic Curve Cryptography depends on how difficult it is to reverse a function without a secret key. These systems rely on assumptions like the prime factorization problem being computationally intractable.`,
+  `At the heart of secure digital communication lies the concept of a one-way function, which is easy to compute but hard to invert. For example, multiplying two large primes is easy, but deriving those primes back from the product is extremely difficult. This is known as computational asymmetry, a foundational idea in cryptography.`,
+  `Another important idea is public key infrastructure, a system that helps verify identities online. Websites use it when they present you with a certificate proving they are who they claim to be. These certificates depend on certificate authorities, which act as trusted third parties.`,
+  `However, not all cryptographic tools provide the same type of protection. For example, hash functions are used for verifying integrity rather than confidentiality. A good hash function has the property of collision resistance, meaning it is extremely unlikely for two different inputs to produce the same hash. Achieving collision resistance requires careful design and mathematical rigor.`,
+  `As computing power increases, especially with the rise of quantum algorithms, traditional systems may become vulnerable. For example, Shor’s algorithm can theoretically break RSA by factoring large numbers efficiently on a quantum computer. This has led to the development of post-quantum cryptography, which focuses on designing systems resistant to quantum attacks.`,
+  `A particularly challenging area is zero-knowledge proofs, which allow one party to prove they know something without revealing the information itself. This idea powers privacy-focused systems such as anonymous credentials and cryptocurrency protocols. One widely used system is the zk-SNARK, which enables efficient verification of complex statements.`,
+  `Despite their usefulness, zero-knowledge systems can be fragile. They require precise implementation to avoid vulnerabilities. A mistake in the trusted setup ceremony can compromise the entire system. This is why researchers invest heavily in audits and formal verification.`,
+  `The field continues to evolve rapidly. New approaches such as homomorphic encryption allow computations to be performed on encrypted data without needing to decrypt it first — a breakthrough for secure cloud computing. Another emerging idea is secure multi-party computation, enabling multiple parties to collaborate on a computation without revealing their private inputs.`,
+  `Modern cryptography is not just about mathematics. Human factors also matter significantly. Many real-world attacks exploit weaknesses in key management or poor implementation practices. Even the strongest encryption fails if a private key is stored insecurely.`,
+  `Understanding these concepts requires substantial effort. But by mastering the building blocks — from RSA to homomorphic encryption — one gains a deeper appreciation of how digital security is achieved in the modern world.`,
+];
+
+const CHECKLIST_SECTION_TEXT = ARTICLE_PARAGRAPHS_TEXT.join('\n\n');
+
+/** ------------------------------------------------------------------ */
+/** LLM prompt helpers                                                 */
+/** ------------------------------------------------------------------ */
+
+function buildParagraphClarifyPrompt(): string {
+  const numbered = ARTICLE_PARAGRAPHS_TEXT.map(
+    (p, i) => `Paragraph ${i + 1}:\n${p.trim()}`
+  ).join('\n\n');
+
+  return `
+You are helping a student understand a dense article about modern cryptography.
+
+Below is the full section, followed by the same text split into numbered paragraphs.
+
+Full section:
+${CHECKLIST_SECTION_TEXT}
+
+Now here is the article split into paragraphs:
+
+${numbered}
+
+For each paragraph i, write a short clarification in plain language (1–2 sentences).
+Return your result as pure JSON with this exact shape, and nothing else:
+
+{
+  "clarifications": [
+    "Clarification for paragraph 1 ...",
+    "Clarification for paragraph 2 ...",
+    "... (and so on, one string per paragraph in order)"
+  ]
+}
+`.trim();
+}
+
+function parseClarificationsFromResponse(
+  answer: string,
+  expectedCount: number
+): string[] {
+  try {
+    const start = answer.indexOf('{');
+    const end = answer.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      const jsonStr = answer.slice(start, end + 1);
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed.clarifications)) {
+        const arr = parsed.clarifications.map((x: any) => String(x));
+        if (arr.length === expectedCount) return arr;
+        if (arr.length > expectedCount) return arr.slice(0, expectedCount);
+        while (arr.length < expectedCount) arr.push('');
+        return arr;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse clarifications JSON', e);
+  }
+
+  const chunks = answer
+    .split(/\n\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!chunks.length) {
+    return Array(expectedCount).fill('');
+  }
+  if (chunks.length >= expectedCount) {
+    return chunks.slice(0, expectedCount);
+  }
+  while (chunks.length < expectedCount) chunks.push('');
+  return chunks;
+}
+
+/** ------------------------------------------------------------------ */
+/** Main App                                                           */
+/** ------------------------------------------------------------------ */
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -53,24 +153,35 @@ export default function App() {
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Hover-based hotspot for hint chips
   const [hoveredHotspot, setHoveredHotspot] = useState<string | null>(null);
-
-  // Section clarify state (per section key)
-  const [clarifyOpen, setClarifyOpen] = useState<Record<string, boolean>>({});
-
-  // Reading progress (0–100)
   const [progress, setProgress] = useState(0);
 
-  // keep ref synced so subscribe callback sees latest locked state
+  const [paragraphClarifications, setParagraphClarifications] = useState<
+    string[] | null
+  >(null);
+  const [paragraphClarifyLoading, setParagraphClarifyLoading] = useState(false);
+  const [paragraphClarifyError, setParagraphClarifyError] = useState<
+    string | null
+  >(null);
+
+  const [activeParagraphIndex, setActiveParagraphIndex] = useState<number | null>(
+    null
+  );
+
+  // paragraph refs for scroll → current paragraph
+  const paragraphRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+  const registerParagraphRef =
+    (index: number) => (el: HTMLParagraphElement | null) => {
+      paragraphRefs.current[index] = el;
+    };
+
   useEffect(() => {
     lockedRef.current = locked;
   }, [locked]);
 
-  // subscribe to adaptation bus
   useEffect(() => {
     const unsub = subscribe((m: UIMode) => {
-      if (lockedRef.current) return; // when locked, ignore emotion changes
+      if (lockedRef.current) return;
       setUIMode(m);
     });
     return () => {
@@ -78,7 +189,6 @@ export default function App() {
     };
   }, []);
 
-  // load models on mount
   useEffect(() => {
     (async () => {
       try {
@@ -90,7 +200,6 @@ export default function App() {
     })();
   }, []);
 
-  // scroll progress bar
   useEffect(() => {
     const update = () => {
       const doc = document.documentElement;
@@ -108,7 +217,15 @@ export default function App() {
     };
   }, []);
 
-  // start detection
+  useEffect(() => {
+    if (uiMode === 'confused') {
+      void ensureParagraphClarifications();
+    } else {
+      setActiveParagraphIndex(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiMode]);
+
   async function onStart() {
     if (!videoRef.current) return;
     setError(null);
@@ -122,18 +239,15 @@ export default function App() {
     }
   }
 
-  // stop detection
   function onStop() {
     stop();
     const v = videoRef.current;
-    const stream = (v?.srcObject as MediaStream | null);
+    const stream = v?.srcObject as MediaStream | null;
     stream?.getTracks().forEach((t) => t.stop());
     if (v) v.srcObject = null;
     setRunning(false);
   }
 
-  // LOCK: freeze mode + close side panel + stop detection
-  // UNLOCK: reopen side panel + restart detection (if models ready)
   function toggleLock() {
     if (!locked) {
       setLocked(true);
@@ -148,46 +262,67 @@ export default function App() {
     }
   }
 
-  // Preview buttons: only work when NOT locked
   function preview(m: UIMode) {
     if (locked) return;
     forceMode(m);
   }
 
-  // Helper to toggle clarify by key
-  function toggleClarify(key: string) {
-    setClarifyOpen((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+  async function ensureParagraphClarifications() {
+    if (paragraphClarifications) return;
+
+    setParagraphClarifyLoading(true);
+    setParagraphClarifyError(null);
+    try {
+      const prompt = buildParagraphClarifyPrompt();
+      const answer = await askLLM(prompt);
+      const clarifications = parseClarificationsFromResponse(
+        answer,
+        ARTICLE_PARAGRAPHS_TEXT.length
+      );
+      setParagraphClarifications(clarifications);
+    } catch (e: any) {
+      setParagraphClarifyError(
+        typeof e?.message === 'string'
+          ? e.message
+          : 'Something went wrong while asking the AI helper.'
+      );
+    } finally {
+      setParagraphClarifyLoading(false);
+    }
   }
 
-  function getLearnMoreURL(section: string): string {
-  switch (section) {
-    case 'rsa':
-      return 'https://cryptobook.nakov.com/asymmetric-key-ciphers/rsa-cryptosystem';
-    case 'ecc':
-      return 'https://cryptobook.nakov.com/asymmetric-key-ciphers/ecc-encryption-decryption';
-    case 'hashing':
-      return 'https://www.cloudflare.com/learning/cryptography/how-do-hash-functions-work/';
-    case 'zkp':
-      return 'https://vitalik.ca/general/2022/06/15/using_snarks.html';
-    case 'checklist':
-    default:
-      return 'https://en.wikipedia.org/wiki/Public-key_cryptography';
-  }
-}
+  function handleMainClarifyClick() {
+    if (uiMode !== 'confused') return;
 
+    const refs = paragraphRefs.current;
+    if (!refs.length) return;
+
+    const viewportMid = window.innerHeight / 2;
+    let bestIdx = 0;
+    let bestDist = Number.POSITIVE_INFINITY;
+
+    refs.forEach((el, idx) => {
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const paraMid = rect.top + rect.height / 2;
+      const dist = Math.abs(paraMid - viewportMid);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = idx;
+      }
+    });
+
+    setActiveParagraphIndex(bestIdx);
+    void ensureParagraphClarifications();
+  }
 
   return (
     <>
-      {/* top reading progress bar */}
       {uiMode === 'confused' && (
         <div className="progress-bar" style={{ width: `${progress}%` }} />
       )}
 
       <div className={`app theme-${uiMode} ${locked ? 'locked' : ''}`}>
-        {/* Header */}
         <header className="chrome">
           <div className="chrome-top">
             <div className="brand">Emotion-Responsive Reader</div>
@@ -202,7 +337,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Toolbar */}
           <div className="toolbar">
             <div className="toolbar-left">
               <span className="tag">Mode:</span>
@@ -230,19 +364,17 @@ export default function App() {
           </div>
         </header>
 
-        {/* Main layout */}
         <main
           className={`layout ${
             sidebarOpen ? 'layout--with-sidebar' : 'layout--no-sidebar'
           }`}
         >
-          {/* LEFT: big article */}
           <article className="reader" id="reader">
             <h1>Understanding Modern Cryptography: A Deep Dive into Digital Security</h1>
 
-            <p>
-              Modern cryptography is built on the idea that certain mathematical problems are
-              computationally expensive to solve. The security of systems like{' '}
+            <p ref={registerParagraphRef(0)}>
+              Modern cryptography is built on the idea that certain mathematical problems
+              are computationally expensive to solve. The security of systems like{' '}
               <HotspotSpan
                 id="hs-crypto-1"
                 term="RSA encryption"
@@ -254,8 +386,8 @@ export default function App() {
                 term="Elliptic Curve Cryptography"
                 onHover={setHoveredHotspot}
               />{' '}
-              depends on how difficult it is to reverse a function without a secret key. These
-              systems rely on assumptions like the{' '}
+              depends on how difficult it is to reverse a function without a secret key.
+              These systems rely on assumptions like the{' '}
               <HotspotSpan
                 id="hs-crypto-3"
                 term="prime factorization problem"
@@ -264,16 +396,16 @@ export default function App() {
               being computationally intractable.
             </p>
 
-            <p>
+            <p ref={registerParagraphRef(1)}>
               At the heart of secure digital communication lies the concept of a{' '}
               <HotspotSpan
                 id="hs-crypto-4"
                 term="one-way function"
                 onHover={setHoveredHotspot}
               />
-              , which is easy to compute but hard to invert. For example, multiplying two large
-              primes is easy, but deriving those primes back from the product is extremely
-              difficult. This is known as{' '}
+              , which is easy to compute but hard to invert. For example, multiplying two
+              large primes is easy, but deriving those primes back from the product is
+              extremely difficult. This is known as{' '}
               <HotspotSpan
                 id="hs-crypto-5"
                 term="computational asymmetry"
@@ -282,16 +414,16 @@ export default function App() {
               , a foundational idea in cryptography.
             </p>
 
-            <p>
+            <p ref={registerParagraphRef(2)}>
               Another important idea is{' '}
               <HotspotSpan
                 id="hs-crypto-6"
                 term="public key infrastructure"
                 onHover={setHoveredHotspot}
               />
-              , a system that helps verify identities online. Websites use it when they present
-              you with a certificate proving they are who they claim to be. These certificates
-              depend on{' '}
+              , a system that helps verify identities online. Websites use it when they
+              present you with a certificate proving they are who they claim to be. These
+              certificates depend on{' '}
               <HotspotSpan
                 id="hs-crypto-7"
                 term="certificate authorities"
@@ -300,7 +432,7 @@ export default function App() {
               , which act as trusted third parties.
             </p>
 
-            <p>
+            <p ref={registerParagraphRef(3)}>
               However, not all cryptographic tools provide the same type of protection. For
               example,{' '}
               <HotspotSpan
@@ -308,19 +440,19 @@ export default function App() {
                 term="hash functions"
                 onHover={setHoveredHotspot}
               />{' '}
-              are used for verifying integrity rather than confidentiality. A good hash function
-              has the property of{' '}
+              are used for verifying integrity rather than confidentiality. A good hash
+              function has the property of{' '}
               <HotspotSpan
                 id="hs-crypto-9"
                 term="collision resistance"
                 onHover={setHoveredHotspot}
               />
-              , meaning it is extremely unlikely for two different inputs to produce the same
-              hash. Achieving collision resistance requires careful design and mathematical
-              rigor.
+              , meaning it is extremely unlikely for two different inputs to produce the
+              same hash. Achieving collision resistance requires careful design and
+              mathematical rigor.
             </p>
 
-            <p>
+            <p ref={registerParagraphRef(4)}>
               As computing power increases, especially with the rise of{' '}
               <HotspotSpan
                 id="hs-crypto-10"
@@ -333,8 +465,8 @@ export default function App() {
                 term="Shor’s algorithm"
                 onHover={setHoveredHotspot}
               />{' '}
-              can theoretically break RSA by factoring large numbers efficiently on a quantum
-              computer. This has led to the development of{' '}
+              can theoretically break RSA by factoring large numbers efficiently on a
+              quantum computer. This has led to the development of{' '}
               <HotspotSpan
                 id="hs-crypto-12"
                 term="post-quantum cryptography"
@@ -343,7 +475,7 @@ export default function App() {
               , which focuses on designing systems resistant to quantum attacks.
             </p>
 
-            <p>
+            <p ref={registerParagraphRef(5)}>
               A particularly challenging area is{' '}
               <HotspotSpan
                 id="hs-crypto-13"
@@ -351,8 +483,9 @@ export default function App() {
                 onHover={setHoveredHotspot}
               />
               , which allow one party to prove they know something without revealing the
-              information itself. This idea powers privacy-focused systems such as anonymous
-              credentials and cryptocurrency protocols. One widely used system is the{' '}
+              information itself. This idea powers privacy-focused systems such as
+              anonymous credentials and cryptocurrency protocols. One widely used system is
+              the{' '}
               <HotspotSpan
                 id="hs-crypto-14"
                 term="zk-SNARK"
@@ -361,7 +494,7 @@ export default function App() {
               , which enables efficient verification of complex statements.
             </p>
 
-            <p>
+            <p ref={registerParagraphRef(6)}>
               Despite their usefulness, zero-knowledge systems can be fragile. They require
               precise implementation to avoid vulnerabilities. A mistake in the{' '}
               <HotspotSpan
@@ -369,29 +502,30 @@ export default function App() {
                 term="trusted setup ceremony"
                 onHover={setHoveredHotspot}
               />{' '}
-              can compromise the entire system. This is why researchers invest heavily in audits
-              and formal verification.
+              can compromise the entire system. This is why researchers invest heavily in
+              audits and formal verification.
             </p>
 
-            <p>
+            <p ref={registerParagraphRef(7)}>
               The field continues to evolve rapidly. New approaches such as{' '}
               <HotspotSpan
                 id="hs-crypto-16"
                 term="homomorphic encryption"
                 onHover={setHoveredHotspot}
               />{' '}
-              allow computations to be performed on encrypted data without needing to decrypt it
-              first — a breakthrough for secure cloud computing. Another emerging idea is{' '}
+              allow computations to be performed on encrypted data without needing to
+              decrypt it first — a breakthrough for secure cloud computing. Another
+              emerging idea is{' '}
               <HotspotSpan
                 id="hs-crypto-17"
                 term="secure multi-party computation"
                 onHover={setHoveredHotspot}
               />
-              , enabling multiple parties to collaborate on a computation without revealing their
-              private inputs.
+              , enabling multiple parties to collaborate on a computation without revealing
+              their private inputs.
             </p>
 
-            <p>
+            <p ref={registerParagraphRef(8)}>
               Modern cryptography is not just about mathematics. Human factors also matter
               significantly. Many real-world attacks exploit weaknesses in{' '}
               <HotspotSpan
@@ -399,98 +533,26 @@ export default function App() {
                 term="key management"
                 onHover={setHoveredHotspot}
               />{' '}
-              or poor implementation practices. Even the strongest encryption fails if a private
-              key is stored insecurely.
+              or poor implementation practices. Even the strongest encryption fails if a
+              private key is stored insecurely.
             </p>
 
-            <p>
-              Understanding these concepts requires substantial effort. But by mastering the
-              building blocks — from{' '}
-              <HotspotSpan
-                id="hs-crypto-1"
-                term="RSA"
-                onHover={setHoveredHotspot}
-              />{' '}
-              to{' '}
+            <p ref={registerParagraphRef(9)}>
+              Understanding these concepts requires substantial effort. But by mastering
+              the building blocks — from{' '}
+              <HotspotSpan id="hs-crypto-1" term="RSA" onHover={setHoveredHotspot} /> to{' '}
               <HotspotSpan
                 id="hs-crypto-16"
                 term="homomorphic encryption"
                 onHover={setHoveredHotspot}
               />
-              — one gains a deeper appreciation of how digital security is achieved in the modern
-              world.
+              — one gains a deeper appreciation of how digital security is achieved in the
+              modern world.
             </p>
-
-            {/* Example section with clarify + learn-more behavior */}
-            {/* Confused mode: Clarify button for this "Checklist" section */}
-            {uiMode === 'confused' && (
-              <button
-                className="clarify-btn"
-                onClick={() => toggleClarify('checklist')}
-              >
-                {clarifyOpen['checklist'] ? 'Hide Summary' : 'Clarify this section'}
-              </button>
-            )}
-
-            <h2>Checklist</h2>
-
-            {/* Happy mode: Learn-more micro-link */}
-            {uiMode === 'happy' && (
-                <div
-                  className="learnmore-link"
-                  onClick={() => {
-                    const url = getLearnMoreURL('checklist');
-                    window.open(url, '_blank');
-                  }}
-                >
-                  🌱 Learn More
-                </div>
-            )}
-
-
-            {/* Confused mode: Clarified summary box */}
-            {uiMode === 'confused' && clarifyOpen['checklist'] && (
-              <div className="clarify-box">
-                <ul>
-                  <li>Chunk dense text into smaller sections.</li>
-                  <li>Surface inline explanations only where needed.</li>
-                  <li>Use emotion signals to selectively add scaffolding.</li>
-                </ul>
-              </div>
-            )}
-
-            <ul>
-              <li>Use signaling (bold, color, icons) for key actions and definitions.</li>
-              <li>Chunk dense sections; reveal examples and math details on demand.</li>
-              <li>Offer inline help chips near terms that repeatedly cause confusion.</li>
-              <li>Provide a visible way to lock the UI and pause adaptation.</li>
-              <li>Let readers reopen support panels when they actively want extra help.</li>
-            </ul>
           </article>
 
-          {/* RIGHT: side panel (open/closable) */}
           {sidebarOpen && (
             <aside className="sidebar">
-              <div className="sidebar-header">
-                <h3>Notes</h3>
-              </div>
-
-              <p>Adaptive behaviors:</p>
-              <ul>
-                <li>
-                  <b>Focused</b>: chrome dimming, minimal distractions
-                </li>
-                <li>
-                  <b>Confused</b>: inline hint chip, zoom, increased line-height, clarify section
-                </li>
-                <li>
-                  <b>Frustrated</b>: simplified visuals, desaturated theme
-                </li>
-                <li>
-                  <b>Happy</b>: vivid accent, optional “learn more” affordances
-                </li>
-              </ul>
-
               {hud && (
                 <div className="hud">
                   <div className="row">
@@ -531,7 +593,6 @@ export default function App() {
           )}
         </main>
 
-        {/* Hint chip – only when confused, unlocked, AND hovering a hotspot */}
         <HintChip
           visible={!locked && uiMode === 'confused' && !!hoveredHotspot}
           targetId={hoveredHotspot ?? undefined}
@@ -540,6 +601,32 @@ export default function App() {
             return hs ? `${hs.term}: ${hs.hint}` : '';
           }, [hoveredHotspot])}
         />
+        {/* Clarify button rendered in a portal so it is truly fixed to viewport */}
+        {uiMode === 'confused' &&
+  typeof document !== 'undefined' &&
+  createPortal(
+    <>
+      <button className="clarify-main-btn" onClick={handleMainClarifyClick}>
+        Confused? Clarify this part
+      </button>
+
+      {activeParagraphIndex !== null && (
+        <ClarifyOverlay
+          paragraphIndex={activeParagraphIndex}
+          loading={paragraphClarifyLoading}
+          error={paragraphClarifyError}
+          clarification={
+            paragraphClarifications
+              ? paragraphClarifications[activeParagraphIndex] ||
+                'No AI clarification available for this paragraph.'
+              : ''
+          }
+          onClose={() => setActiveParagraphIndex(null)}
+        />
+      )}
+    </>,
+    document.body
+  )}
       </div>
     </>
   );
@@ -598,6 +685,51 @@ function HintChip({
     <div className={`hint-chip ${visible ? 'show' : ''}`} style={style}>
       <span className="dot" />
       <span className="text">{text}</span>
+    </div>
+  );
+}
+
+function ClarifyOverlay({
+  paragraphIndex,
+  clarification,
+  loading,
+  error,
+  onClose,
+}: {
+  paragraphIndex: number;
+  clarification: string;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <div className="clarify-overlay">
+      <div className="clarify-overlay-panel">
+        <div className="clarify-overlay-header">
+          <div>
+            <div className="clarify-overlay-title">
+              Clarifying paragraph {paragraphIndex + 1}
+            </div>
+            <div className="clarify-overlay-subtitle">
+              AI helper (confused mode)
+            </div>
+          </div>
+          <button className="clarify-overlay-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <div className="clarify-overlay-body">
+          {loading ? (
+            <p>Summarising this paragraph in simpler language…</p>
+          ) : error ? (
+            <p className="clarify-error">Error: {error}</p>
+          ) : clarification ? (
+            <p>{clarification}</p>
+          ) : (
+            <p>No AI clarification available for this paragraph.</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
