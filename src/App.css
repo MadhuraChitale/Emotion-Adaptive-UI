@@ -204,8 +204,8 @@ body{
 /* HOTSPOTS                                                                   */
 /* -------------------------------------------------------------------------- */
 
+
 .hotspot{
-  background:linear-gradient(transparent 60%, rgba(254,240,138,.9) 60%);
   padding:0 2px;
   border-radius:4px;
   cursor:help;
@@ -271,6 +271,9 @@ body{
   margin-bottom:8px;
 }
 
+/* .camera{
+  margin-top:auto;
+} */
 
 .camera video{
   width:100%;
@@ -373,7 +376,8 @@ body{
   transition:
     opacity var(--transition),
     transform var(--transition),
-    background-color var(--transition);
+    background-color var(--transition),
+    box-shadow var(--transition);
 }
 
 .hint-chip.show{
@@ -405,6 +409,50 @@ body{
 }
 
 /* -------------------------------------------------------------------------- */
+/* CLARIFY & LEARN-MORE                                                       */
+/* -------------------------------------------------------------------------- */
+
+/* Confused mode clarify button */
+.clarify-btn {
+  background: rgba(124,58,237,0.15);
+  border: 1px solid rgba(124,58,237,0.35);
+  color: #4c1d95;
+  padding: 4px 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.2s ease;
+}
+
+.clarify-btn:hover {
+  background: rgba(124,58,237,0.25);
+}
+
+/* Clarified section container */
+.clarify-box {
+  background: rgba(124,58,237,0.07);
+  border-left: 3px solid rgba(124,58,237,0.45);
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 0.87rem;
+}
+
+/* Learn More link */
+.learnmore-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: #16a34a;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.learnmore-link:hover {
+  text-decoration: underline;
+}
+
+/* -------------------------------------------------------------------------- */
 /* EMOTION THEMES                                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -417,23 +465,56 @@ body{
   --accent:#2563eb;
 }
 
-/* Confused: zoomed, airy, strong accent */
+/* Minimal shadows in focused mode */
+.app.theme-focused .reader {
+  box-shadow: none;
+}
+
+/* Confused: clarity-first — white + blue, more spacing, guiding rail */
 .app.theme-confused{
   --reader-scale:1.06;
   --reader-line:1.9;
-  --saturation:1.05;
+  --saturation:1.0;
   --sidebar-op:1;
-  --accent:#7c3aed;
+  --accent:#476EAE; /* deep blue from palette */
+}
+
+.app.theme-confused .hotspot{
+  background:linear-gradient(transparent 60%, rgba(254,240,138,.9) 60%);
+}
+
+.app.theme-confused .chrome{
+  background:linear-gradient(90deg, #ffffff, #e5f0ff);
+  box-shadow:0 2px 8px rgba(71,110,174,0.15);
 }
 
 .app.theme-confused .reader{
-  box-shadow:0 16px 40px rgba(79,70,229,0.15);
-  border-left:4px solid rgba(124,58,237,0.6);
+  background:#ffffff;
+  box-shadow:0 16px 40px rgba(71,110,174,0.18);
+  border-left:4px solid rgba(71,110,174,0.8); /* guide rail */
 }
 
+/* mode pill in confused */
 .app.theme-confused .toolbar .mode{
-  background:rgba(124,58,237,0.12);
-  color:#4c1d95;
+  background:rgba(71,110,174,0.12);
+  color:#233b63;
+}
+
+/* extra breathing room in confused mode */
+.app.theme-confused .reader p{
+  margin-bottom:22px;
+}
+
+/* hint chip in confused: light, “clarity” style */
+.app.theme-confused .hint-chip{
+  background:#ffffff;
+  color:#111827;
+  border:1px solid rgba(71,110,174,0.35);
+  box-shadow:0 10px 30px rgba(15,23,42,0.18);
+}
+
+.app.theme-confused .hint-chip .dot{
+  background:#476EAE;
 }
 
 /* Frustrated: desaturated, calmer, simplified */
@@ -459,26 +540,42 @@ body{
   color:#111827;
 }
 
-/* Happy: slightly vivid, warmer visuals */
+/* Happy: uses palette #476EAE, #48B3AF, #A7E399, #F6FF99 */
 .app.theme-happy{
   --reader-scale:1.02;
   --reader-line:1.75;
-  --saturation:1.25;
+  --saturation:1.15;
   --sidebar-op:1;
-  --accent:#16a34a;
+  --accent:#48B3AF; /* teal as primary accent */
 }
 
+/* warm gradient header using yellow + light green */
 .app.theme-happy .chrome{
-  background:linear-gradient(90deg, #ecfdf3, #f9fafb);
+  background:linear-gradient(90deg, #F6FF99, #A7E399);
+  box-shadow:0 2px 10px rgba(72,179,175,0.18);
 }
 
+/* reader gets a soft “lift” in teal */
 .app.theme-happy .reader{
-  box-shadow:0 16px 40px rgba(22,163,74,0.16);
+  box-shadow:0 16px 40px rgba(72,179,175,0.22);
+  border-radius:1.05rem;
 }
 
+/* mode pill in happy: teal/blue mix */
 .app.theme-happy .toolbar .mode{
-  background:rgba(22,163,74,0.12);
-  color:#166534;
+  background:rgba(72,179,175,0.18);
+  color:#1d485c;
+}
+
+/* happy header flourish on h2 (blue underline) */
+.app.theme-happy .reader h2{
+  border-bottom:2px solid rgba(71,110,174,0.3);
+  padding-bottom:3px;
+}
+
+/* learn-more link in happy picks up happy accent */
+.app.theme-happy .learnmore-link{
+  color:#48B3AF;
 }
 
 /* Locked indicator */
@@ -487,4 +584,19 @@ body{
   color:#6b7280;
   font-weight:500;
   font-size:0.85rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/* PROGRESS BAR (rendered only in confused mode from App.tsx)                */
+/* -------------------------------------------------------------------------- */
+
+.progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  background: #476EAE; /* same as confused accent */
+  z-index: 2000;
+  transition: width 0.2s ease;
 }
