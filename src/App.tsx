@@ -136,6 +136,99 @@ function parseClarificationsFromResponse(
 }
 
 /** ------------------------------------------------------------------ */
+/** Deep dive (happy) helpers                                          */
+/** ------------------------------------------------------------------ */
+
+type DeepLink = {
+  title: string;
+  url: string;
+  blurb: string;
+};
+
+function buildDeepDivePrompt(): string {
+  const numbered = ARTICLE_PARAGRAPHS_TEXT.map(
+    (p, i) => `Paragraph ${i + 1}:\n${p.trim()}`
+  ).join('\n\n');
+
+  return `
+You are an AI assistant that recommends high-level follow-up readings.
+
+The user is reading an article about modern cryptography. The article is split into numbered paragraphs:
+
+${numbered}
+
+For each paragraph i, suggest 2–3 external readings (articles, blog posts, or intro resources) that would help a curious student "dive deeper" into that paragraph's topic.
+
+You may invent plausible example URLs (e.g., "https://example.com/...") if you don't know real ones, but they should look realistic and be specific to the topic.
+
+Return ONLY pure JSON, with this exact structure:
+
+{
+  "links": [
+    [
+      { "title": "Title for p1 link 1", "url": "https://...", "blurb": "1–2 sentence description" },
+      { "title": "Title for p1 link 2", "url": "https://...", "blurb": "..." }
+    ],
+    [
+      { "title": "Title for p2 link 1", "url": "https://...", "blurb": "..." }
+    ],
+    ...
+  ]
+}
+
+There must be exactly one inner array of link objects per paragraph, in order.
+`.trim();
+}
+
+function parseDeepLinksFromResponse(
+  answer: string,
+  expectedParagraphs: number
+): DeepLink[][] {
+  try {
+    const start = answer.indexOf('{');
+    const end = answer.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      const jsonStr = answer.slice(start, end + 1);
+      const parsed = JSON.parse(jsonStr);
+
+      if (Array.isArray(parsed.links)) {
+        const linksRaw = parsed.links as any[];
+        const result: DeepLink[][] = [];
+
+        for (let i = 0; i < expectedParagraphs; i++) {
+          const item = linksRaw[i];
+          if (Array.isArray(item)) {
+            result.push(
+              item.map((obj: any) => ({
+                title: String(obj?.title ?? 'Further reading'),
+                url: String(obj?.url ?? '#'),
+                blurb: String(obj?.blurb ?? ''),
+              }))
+            );
+          } else if (item && typeof item === 'object') {
+            result.push([
+              {
+                title: String(item.title ?? 'Further reading'),
+                url: String(item.url ?? '#'),
+                blurb: String(item.blurb ?? ''),
+              },
+            ]);
+          } else {
+            result.push([]);
+          }
+        }
+        return result;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse deep links JSON', e);
+  }
+
+  // Fallback: no structured links
+  return Array.from({ length: expectedParagraphs }, () => [] as DeepLink[]);
+}
+
+/** ------------------------------------------------------------------ */
 /** Main App                                                           */
 /** ------------------------------------------------------------------ */
 
@@ -156,6 +249,7 @@ export default function App() {
   const [hoveredHotspot, setHoveredHotspot] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
+  // Confused → clarifications
   const [paragraphClarifications, setParagraphClarifications] = useState<
     string[] | null
   >(null);
@@ -163,12 +257,19 @@ export default function App() {
   const [paragraphClarifyError, setParagraphClarifyError] = useState<
     string | null
   >(null);
-
   const [activeParagraphIndex, setActiveParagraphIndex] = useState<number | null>(
     null
   );
 
-  // paragraph refs for scroll → current paragraph
+  // Happy → deep dive links
+  const [deepLinks, setDeepLinks] = useState<DeepLink[][] | null>(null);
+  const [deepLinksLoading, setDeepLinksLoading] = useState(false);
+  const [deepLinksError, setDeepLinksError] = useState<string | null>(null);
+  const [activeDeepParagraphIndex, setActiveDeepParagraphIndex] = useState<
+    number | null
+  >(null);
+
+  // paragraph refs
   const paragraphRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const registerParagraphRef =
     (index: number) => (el: HTMLParagraphElement | null) => {
@@ -217,11 +318,22 @@ export default function App() {
     };
   }, []);
 
+  // Enter/leave confused → prefetch clarifications
   useEffect(() => {
     if (uiMode === 'confused') {
       void ensureParagraphClarifications();
     } else {
       setActiveParagraphIndex(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiMode]);
+
+  // Enter/leave happy → prefetch deep links
+  useEffect(() => {
+    if (uiMode === 'happy') {
+      void ensureDeepLinks();
+    } else {
+      setActiveDeepParagraphIndex(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiMode]);
@@ -267,6 +379,10 @@ export default function App() {
     forceMode(m);
   }
 
+  /** -------------------------------------------------------------- */
+  /** LLM clarify + deep dive helpers                                */
+  /** -------------------------------------------------------------- */
+
   async function ensureParagraphClarifications() {
     if (paragraphClarifications) return;
 
@@ -291,11 +407,33 @@ export default function App() {
     }
   }
 
-  function handleMainClarifyClick() {
-    if (uiMode !== 'confused') return;
+  async function ensureDeepLinks() {
+    if (deepLinks) return;
 
+    setDeepLinksLoading(true);
+    setDeepLinksError(null);
+    try {
+      const prompt = buildDeepDivePrompt();
+      const answer = await askLLM(prompt);
+      const parsed = parseDeepLinksFromResponse(
+        answer,
+        ARTICLE_PARAGRAPHS_TEXT.length
+      );
+      setDeepLinks(parsed);
+    } catch (e: any) {
+      setDeepLinksError(
+        typeof e?.message === 'string'
+          ? e.message
+          : 'Something went wrong while asking the AI for links.'
+      );
+    } finally {
+      setDeepLinksLoading(false);
+    }
+  }
+
+  function getCurrentParagraphIndex(): number | null {
     const refs = paragraphRefs.current;
-    if (!refs.length) return;
+    if (!refs.length) return null;
 
     const viewportMid = window.innerHeight / 2;
     let bestIdx = 0;
@@ -312,9 +450,28 @@ export default function App() {
       }
     });
 
-    setActiveParagraphIndex(bestIdx);
+    return bestIdx;
+  }
+
+  function handleMainClarifyClick() {
+    if (uiMode !== 'confused') return;
+    const idx = getCurrentParagraphIndex();
+    if (idx === null) return;
+    setActiveParagraphIndex(idx);
     void ensureParagraphClarifications();
   }
+
+  function handleDeepDiveClick() {
+    if (uiMode !== 'happy') return;
+    const idx = getCurrentParagraphIndex();
+    if (idx === null) return;
+    setActiveDeepParagraphIndex(idx);
+    void ensureDeepLinks();
+  }
+
+  /** ---------------------------------------------------------------- */
+  /** Render                                                           */
+  /** ---------------------------------------------------------------- */
 
   return (
     <>
@@ -556,12 +713,12 @@ export default function App() {
               {hud && (
                 <div className="hud">
                   <div className="row">
-                    <span>Label:</span>
+                    <span>Emotion</span>
                     <b>{hud.label}</b>
-                    <span>Conf:</span>
-                    <b>{hud.conf.toFixed(2)}</b>
+                    {/* <span>Conf:</span>
+                    <b>{hud.conf.toFixed(2)}</b> */}
                   </div>
-                  <div className="bars">
+                  {/* <div className="bars">
                     {(['happy', 'focused', 'confused', 'frustrated'] as const).map(
                       (k) => (
                         <div key={k} className="bar">
@@ -582,7 +739,7 @@ export default function App() {
                         </div>
                       )
                     )}
-                  </div>
+                  </div> */}
                 </div>
               )}
 
@@ -601,32 +758,56 @@ export default function App() {
             return hs ? `${hs.term}: ${hs.hint}` : '';
           }, [hoveredHotspot])}
         />
-        {/* Clarify button rendered in a portal so it is truly fixed to viewport */}
-        {uiMode === 'confused' &&
-  typeof document !== 'undefined' &&
-  createPortal(
-    <>
-      <button className="clarify-main-btn" onClick={handleMainClarifyClick}>
-        Confused? Clarify this part
-      </button>
 
-      {activeParagraphIndex !== null && (
-        <ClarifyOverlay
-          paragraphIndex={activeParagraphIndex}
-          loading={paragraphClarifyLoading}
-          error={paragraphClarifyError}
-          clarification={
-            paragraphClarifications
-              ? paragraphClarifications[activeParagraphIndex] ||
-                'No AI clarification available for this paragraph.'
-              : ''
-          }
-          onClose={() => setActiveParagraphIndex(null)}
-        />
-      )}
-    </>,
-    document.body
-  )}
+        {/* BUTTONS + OVERLAYS in one portal so they stay fixed */}
+        {typeof document !== 'undefined' &&
+          createPortal(
+            <>
+              {/* Confused → clarify */}
+              {uiMode === 'confused' && (
+                <button className="clarify-main-btn" onClick={handleMainClarifyClick}>
+                  🤔 Clarify?
+                </button>
+              )}
+
+              {uiMode === 'confused' && activeParagraphIndex !== null && (
+                <ClarifyOverlay
+                  paragraphIndex={activeParagraphIndex}
+                  loading={paragraphClarifyLoading}
+                  error={paragraphClarifyError}
+                  clarification={
+                    paragraphClarifications
+                      ? paragraphClarifications[activeParagraphIndex] ||
+                        'No AI clarification available for this paragraph.'
+                      : ''
+                  }
+                  onClose={() => setActiveParagraphIndex(null)}
+                />
+              )}
+
+              {/* Happy → dive deeper */}
+              {uiMode === 'happy' && (
+                <button className="deep-main-btn" onClick={handleDeepDiveClick}>
+                 📚 Dive deeper?
+                </button>
+              )}
+
+              {uiMode === 'happy' && activeDeepParagraphIndex !== null && (
+                <DeepDiveOverlay
+                  paragraphIndex={activeDeepParagraphIndex}
+                  links={
+                    deepLinks
+                      ? deepLinks[activeDeepParagraphIndex] ?? []
+                      : []
+                  }
+                  loading={deepLinksLoading}
+                  error={deepLinksError}
+                  onClose={() => setActiveDeepParagraphIndex(null)}
+                />
+              )}
+            </>,
+            document.body
+          )}
       </div>
     </>
   );
@@ -708,11 +889,11 @@ function ClarifyOverlay({
         <div className="clarify-overlay-header">
           <div>
             <div className="clarify-overlay-title">
-              Clarifying paragraph {paragraphIndex + 1}
+              ❓Help
             </div>
-            <div className="clarify-overlay-subtitle">
+            {/* <div className="clarify-overlay-subtitle">
               AI helper (confused mode)
-            </div>
+            </div> */}
           </div>
           <button className="clarify-overlay-close" onClick={onClose}>
             ✕
@@ -727,6 +908,64 @@ function ClarifyOverlay({
             <p>{clarification}</p>
           ) : (
             <p>No AI clarification available for this paragraph.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeepDiveOverlay({
+  paragraphIndex,
+  links,
+  loading,
+  error,
+  onClose,
+}: {
+  paragraphIndex: number;
+  links: DeepLink[];
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <div className="clarify-overlay">
+      <div className="clarify-overlay-panel">
+        <div className="clarify-overlay-header">
+          <div>
+            <div className="clarify-overlay-title">
+              📚 Dive Deeper
+            </div>
+          </div>
+          <button className="clarify-overlay-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <div className="clarify-overlay-body">
+          {loading ? (
+            <p>Finding extra readings for this topic…</p>
+          ) : error ? (
+            <p className="clarify-error">Error: {error}</p>
+          ) : links && links.length > 0 ? (
+            <ul className="deep-links-list">
+              {links.map((link, i) => (
+                <li key={i} className="deep-link-item">
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="deep-link-title"
+                  >
+                    {link.title}
+                  </a>
+                  {link.blurb && (
+                    <p className="deep-link-blurb">{link.blurb}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No extra readings available for this paragraph.</p>
           )}
         </div>
       </div>

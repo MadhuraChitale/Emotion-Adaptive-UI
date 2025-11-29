@@ -600,14 +600,16 @@ body{
   z-index: 2000;
   transition: width 0.2s ease;
 }
-/* Clarify button – fixed to viewport, near the right edge */
+
+/*  */
+/* Clarify button – confused mode */
 .clarify-main-btn {
   position: fixed;
-  top: 50%;                     /* vertically centered */
+  top: 50%;
   transform: translateY(-50%);
-  right: 320px;                  /* button hugs the right side */
+  right: 400px;
   z-index: 1000;
-  background: rgba(124, 58, 237, 0.95);
+  background: rgba(124, 58, 237, 0.95); /* purple-ish */
   color: #f9fafb;
   border: none;
   padding: 8px 14px;
@@ -625,13 +627,38 @@ body{
   background: rgba(109, 40, 217, 1);
 }
 
-/* Clarify overlay – also fixed, to the LEFT of the button */
+/* Dive deeper button – happy mode, with "happy" color */
+.deep-main-btn {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  right: 450px;
+  z-index: 1000;
+  background: #22c55e; /* green happy theme */
+  color: #f9fafb;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deep-main-btn:hover {
+  background: #16a34a;
+}
+
+/* Overlay (shared by clarify + deep dive) to the left of the button */
 .clarify-overlay {
   position: fixed;
-  top: 50%;                      /* vertically centered like the button */
+  top: 50%;
   transform: translateY(-50%);
-  right: 120px;                  /* > 24px → visually to the left of the button */
-  z-index: 1100;                 /* above main UI */
+  right: 600px; /* to the left of the 24px button */
+  z-index: 1100;
 }
 
 .clarify-overlay-panel {
@@ -648,43 +675,37 @@ body{
   gap: 8px;
 }
 
-.clarify-overlay-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 4px;
+/* ...existing clarify-overlay-* rules you already had... */
+
+.deep-links-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
-.clarify-overlay-title {
-  font-size: 0.9rem;
+.deep-link-item + .deep-link-item {
+  margin-top: 8px;
+}
+
+.deep-link-title {
+  font-size: 0.85rem;
   font-weight: 600;
+  text-decoration: underline;
+  color: #bbf7d0; /* light green accent for happy theme */
 }
 
-.clarify-overlay-subtitle {
+.deep-link-title:hover {
+  text-decoration: none;
+}
+
+.deep-link-blurb {
+  margin: 2px 0 0;
   font-size: 0.75rem;
-  opacity: 0.8;
+  opacity: 0.9;
 }
 
-.clarify-overlay-close {
-  border: none;
-  background: transparent;
-  color: #9ca3af;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-.clarify-overlay-close:hover {
-  color: #e5e7eb;
-}
-
-.clarify-overlay-body {
-  font-size: 0.8rem;
-  line-height: 1.4;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.clarify-error {
-  color: #fecaca;
+.clarify-overlay-header {
+    display: flex;
+    flex-direction: row;
+    gap: 10rem;
 }
