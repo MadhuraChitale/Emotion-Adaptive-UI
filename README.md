@@ -58,7 +58,7 @@ It uses `face-api.js` under the hood with three specific networks:
   Produces probabilities for the standard 7 expressions:
   - neutral, happy, sad, angry, fearful, disgusted, surprised
 
-#### How emotions are deduced
+### My extensions on top of the pre-trained models for emotion deduction
 
 1. **Base expression probabilities (7 classes)**  
    For each frame, the engine reads the 7 expression probabilities from `FaceExpressionNet`. These are stored in a small rolling window (e.g. the last ~15 frames). The probabilities in that window are averaged so that decisions are based on a short history, not a single frame.
