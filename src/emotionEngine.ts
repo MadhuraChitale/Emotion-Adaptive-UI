@@ -6,7 +6,7 @@ export type ExpressionProbs = Record<string, number>;
 
 const WINDOW: ExpressionProbs[] = [];
 const MAXW = 15;
-const THRESH = 0.40;
+const THRESH = 0.20;
 const DWELL_MS = 1000;
 const COOLDOWN_MS = 4000;
 
@@ -15,9 +15,7 @@ let cooldownUntil = 0;
 let lastCandidate: { label: EmotionLabel; since: number } | null = null;
 let stopLoop = false;
 
-// ---------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------
 
 function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   const dx = a.x - b.x;
@@ -26,7 +24,7 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 // Brow furrow: inner brows (21,22) move inward relative to face width (0,16).
-// We normalize brow distance by face width, then map a relaxed distance to 0
+// Normalize brow distance by face width, then map a relaxed distance to 0
 // and a "strong furrow" distance to 1.
 function browFurrow(landmarks: any) {
   const p = landmarks?.positions;
@@ -42,7 +40,7 @@ function browFurrow(landmarks: any) {
 
   const norm = between / faceWidth;
 
-  // Heuristic thresholds – tune if needed:
+  // Heuristic thresholds:
   //  - RELAXED: typical neutral brow spacing
   //  - STRONG: brows drawn close together
   const RELAXED = 0.32;
@@ -68,9 +66,7 @@ function mouthCornerDrop(landmarks: any) {
   return Math.max(0, drop) / width; // ~0.00 neutral/smile … 0.05–0.15+ strong corner drop
 }
 
-// ---------------------------------------------------------------------
 // Camera + model loading
-// ---------------------------------------------------------------------
 
 export async function loadModels(base = '/models') {
   await Promise.all([
@@ -127,9 +123,7 @@ export function stop() {
   stopLoop = true;
 }
 
-// ---------------------------------------------------------------------
-// 7 → 4 mapping with heuristics
-// ---------------------------------------------------------------------
+// 7 → 3 mapping with heuristics
 
 function mapToFourWithHeur(
   avg: ExpressionProbs,
@@ -150,29 +144,19 @@ function mapToFourWithHeur(
   }
 
   // Normalized/boosted heuristics
-  const furrowN = Math.min(1, Math.max(0, heur.furrow)); // already 0..1
+  const furrowN = Math.min(1, Math.max(0, heur.furrow));
   const cornerDropN = Math.min(
     1,
     Math.max(0, (heur.cornerDrop - 0.03) / 0.10)
   );
 
-  // Frustrated = corners down (geometry) + irritation signals
-  const frustrated =
-    0.90 * cornerDropN +
-    0.35 * angry +
-    0.30 * disgusted +
-    0.20 * sad -
-    0.10 * happy;
-
   // Confused = brow furrow (geometry) + a bit of surprised/fearful.
-  // 🔼 boosted to 1.8 * furrowN so a strong furrow clearly dominates.
   const confused =
     1.8 * furrowN +
     0.15 * (fearful + surprised) +
     0.05 * neutral;
 
-  // Focused: mostly neutral, but
-  // 🔽 reduce it when furrow is high so it can't beat confused in that case.
+  // Focused: 
   const focused =
     0.90 * neutral -
     0.10 * (surprised + fearful + angry + disgusted) -
@@ -183,7 +167,6 @@ function mapToFourWithHeur(
     0.10 * (angry + sad + disgusted);
 
   const raw = {
-    frustrated,
     confused,
     happy: happyScore,
     focused,
@@ -221,9 +204,7 @@ function smoothedDecision(heur: {
   return mapToFourWithHeur(avg, heur);
 }
 
-// ---------------------------------------------------------------------
 // HUD type
-// ---------------------------------------------------------------------
 
 export type HUD = {
   label: EmotionLabel;
@@ -232,9 +213,7 @@ export type HUD = {
   cooling: number;
 };
 
-// ---------------------------------------------------------------------
 // Main loop
-// ---------------------------------------------------------------------
 
 export async function loop(
   videoEl: HTMLVideoElement,
@@ -260,9 +239,6 @@ export async function loop(
     if (det?.landmarks) {
       furrow = browFurrow(det.landmarks);
       cornerDrop = mouthCornerDrop(det.landmarks);
-
-      // Uncomment to debug:
-      // console.log('furrow:', furrow.toFixed(3), 'cornerDrop:', cornerDrop.toFixed(3));
     }
 
     const { label, conf, scores } = smoothedDecision({ furrow, cornerDrop });

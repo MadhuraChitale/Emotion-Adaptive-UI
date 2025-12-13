@@ -19,9 +19,7 @@ import {
 import { subscribe, forceMode, getMode, type UIMode } from './adaptation';
 import { askLLM } from './llmClient';
 
-/** ------------------------------------------------------------------ */
 /** Hotspots (for hint chips)                                          */
-/** ------------------------------------------------------------------ */
 
 type Hotspot = { id: string; term: string; hint: string };
 
@@ -46,9 +44,7 @@ const HOTSPOTS: Hotspot[] = [
   { id: 'hs-crypto-18', term: 'key management', hint: 'Practices around generating and storing cryptographic keys.' },
 ];
 
-/** ------------------------------------------------------------------ */
 /** Article text (plain) for LLM – paragraph-wise                      */
-/** ------------------------------------------------------------------ */
 
 const ARTICLE_PARAGRAPHS_TEXT: string[] = [
   `Modern cryptography is built on the idea that certain mathematical problems are computationally expensive to solve. The security of systems like RSA encryption and Elliptic Curve Cryptography depends on how difficult it is to reverse a function without a secret key. These systems rely on assumptions like the prime factorization problem being computationally intractable.`,
@@ -65,9 +61,7 @@ const ARTICLE_PARAGRAPHS_TEXT: string[] = [
 
 const CHECKLIST_SECTION_TEXT = ARTICLE_PARAGRAPHS_TEXT.join('\n\n');
 
-/** ------------------------------------------------------------------ */
 /** LLM prompt helpers                                                 */
-/** ------------------------------------------------------------------ */
 
 function buildParagraphClarifyPrompt(): string {
   const numbered = ARTICLE_PARAGRAPHS_TEXT.map(
@@ -135,9 +129,7 @@ function parseClarificationsFromResponse(
   return chunks;
 }
 
-/** ------------------------------------------------------------------ */
-/** Deep dive (happy) helpers                                          */
-/** ------------------------------------------------------------------ */
+/** Deep dive LLM helpers                                          */
 
 type DeepLink = {
   title: string;
@@ -228,9 +220,7 @@ function parseDeepLinksFromResponse(
   return Array.from({ length: expectedParagraphs }, () => [] as DeepLink[]);
 }
 
-/** ------------------------------------------------------------------ */
 /** Main App                                                           */
-/** ------------------------------------------------------------------ */
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -379,9 +369,7 @@ export default function App() {
     forceMode(m);
   }
 
-  /** -------------------------------------------------------------- */
   /** LLM clarify + deep dive helpers                                */
-  /** -------------------------------------------------------------- */
 
   async function ensureParagraphClarifications() {
     if (paragraphClarifications) return;
@@ -469,9 +457,7 @@ export default function App() {
     void ensureDeepLinks();
   }
 
-  /** ---------------------------------------------------------------- */
   /** Render                                                           */
-  /** ---------------------------------------------------------------- */
 
   return (
     <>
@@ -718,28 +704,6 @@ export default function App() {
                     {/* <span>Conf:</span>
                     <b>{hud.conf.toFixed(2)}</b> */}
                   </div>
-                  {/* <div className="bars">
-                    {(['happy', 'focused', 'confused', 'frustrated'] as const).map(
-                      (k) => (
-                        <div key={k} className="bar">
-                          <span className="k">{k}</span>
-                          <div className="track">
-                            <div
-                              className="fill"
-                              style={{
-                                width: `${Math.round(
-                                  ((hud.scores as any)[k] || 0) * 100
-                                )}%`,
-                              }}
-                            />
-                          </div>
-                          <span className="v">
-                            {((hud.scores as any)[k] || 0).toFixed(2)}
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div> */}
                 </div>
               )}
 
@@ -891,9 +855,6 @@ function ClarifyOverlay({
             <div className="clarify-overlay-title">
               ❓Help
             </div>
-            {/* <div className="clarify-overlay-subtitle">
-              AI helper (confused mode)
-            </div> */}
           </div>
           <button className="clarify-overlay-close" onClick={onClose}>
             ✕
